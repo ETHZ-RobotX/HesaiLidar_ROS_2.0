@@ -296,22 +296,25 @@ inline sensor_msgs::msg::PointCloud2 SourceDriver::ToRosMsg(const LidarDecodedFr
   sensor_msgs::PointCloud2Iterator<float> iter_intensity_(ros_msg, "intensity");
   sensor_msgs::PointCloud2Iterator<uint16_t> iter_ring_(ros_msg, "ring");
   sensor_msgs::PointCloud2Iterator<double> iter_timestamp_(ros_msg, "timestamp");
-  // Radial min-distance filter: drop points within min_distance_ of the sensor
-  // origin (e.g. robot chassis). kept points are written to the front of the
-  // buffer and the message is shrunk to match below. 0 disables the filter.
+  // Radial min-distance filter: points within min_distance_ are set to NaN
+  // xyz/intensity so the structured point cloud shape and per-point timestamps
+  // are preserved. Consumers must tolerate NaN (is_dense = false). 0 disables.
   const float min_r2 = min_distance_ * min_distance_;
-  size_t kept = 0;
   for (size_t i = 0; i < points_number; i++)
   {
     LidarPointXYZIRT point = pPoints[i];
     if (min_r2 > 0.f &&
         (point.x * point.x + point.y * point.y + point.z * point.z) < min_r2) {
-      continue;
+      *iter_x_ = std::numeric_limits<float>::quiet_NaN();
+      *iter_y_ = std::numeric_limits<float>::quiet_NaN();
+      *iter_z_ = std::numeric_limits<float>::quiet_NaN();
+      *iter_intensity_ = std::numeric_limits<float>::quiet_NaN();
+    } else {
+      *iter_x_ = point.x;
+      *iter_y_ = point.y;
+      *iter_z_ = point.z;
+      *iter_intensity_ = point.intensity;
     }
-    *iter_x_ = point.x;
-    *iter_y_ = point.y;
-    *iter_z_ = point.z;
-    *iter_intensity_ = point.intensity;
     *iter_ring_ = point.ring;
     *iter_timestamp_ = point.timestamp;
     ++iter_x_;
@@ -320,10 +323,7 @@ inline sensor_msgs::msg::PointCloud2 SourceDriver::ToRosMsg(const LidarDecodedFr
     ++iter_intensity_;
     ++iter_ring_;
     ++iter_timestamp_;
-    ++kept;
   }
-  // Shrink the message to the points actually kept (buffer was pre-sized to
-  // points_number). Skipping this would leave uninitialized tail points.
   // printf("HesaiLidar Runing Status [standby mode:%u]  |  [speed:%u]\n", frame.work_mode, frame.spin_speed);
   printf("%s frame:%d points:%u packet:%d start time:%lf end time:%lf\n", prefix, frame_index, points_number, packet_number, frame_start_timestamp, frame_end_timestamp) ;
   std::cout.flush();
